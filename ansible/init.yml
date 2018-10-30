@@ -1,0 +1,141 @@
+---
+- hosts: "raspberry"
+  gather_facts: no
+  tasks:
+    - name: copy bash.rc
+      copy:
+        src: files/frodox.sh
+        dest: /etc/profile.d/frodox.sh
+
+    - name: Remove stupid ssh-password-check
+      file:
+        path: /etc/profile.d/sshpwd.sh
+        state: absent
+
+    - name: Remove useless packages
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: yes
+      with_items:
+        - geany-common
+        - vim-tiny
+        - chromium-browser
+        - claws-mail
+        - packagekit
+        - libreoffice-core
+        - libreoffice-common
+        - libreoffice-writer
+        - bluej
+        - greenfoot
+        - debian-reference-common
+        - debian-reference-en
+        - nuscratch
+        - scratch
+        - sonic-pi
+        - sense-hat
+        - sense-emu-tools
+        - python-sense-emu
+        - python3-sense-emu
+        - idle
+        - idle3
+        - idle-python2.7
+        - idle-python3.5
+        - nodered
+        - python3-thonny
+        - dillo
+        - xpdf
+        - wolfram-engine
+        - gcc-4.6-base
+        - gcc-4.7-base
+        - gcc-4.8-base
+        - gcc-4.9-base
+        - gcc-5-base
+        - gcc-6-base
+        - triggerhappy
+        - dphys-swapfile
+        - dc
+        - logrotate
+        - cron
+        - python-minecraftpi
+        - python3-minecraftpi
+        - minecraft-pi
+        - bluez
+
+    - name: Install basic packages
+      apt:
+        name: "{{ item }}"
+        state: present
+        install_recommends: no
+        purge: yes
+        update_cache: yes
+      with_items:
+        - tmux
+        - htop
+        - bash-completion
+        - vim
+        - ntp
+        - apt-file
+        - iftop
+        - bc
+        - colordiff
+        - git
+        - python-gpiozero
+        - python3-gpiozero
+        - python3-magic
+        - mlocate
+        - python3-pip
+        - feh
+        - shellcheck
+        - iotop
+        #- pylint3
+        - ipython3
+        #- yamllint
+        - python3-yaml
+        - python3-pytest
+        - gifsicle
+
+    - name: Remove bad aliases
+      lineinfile:
+        path: ~pi/.bashrc
+        regexp: 'alias ls='
+        state: absent
+
+    - name: Copy ssh config
+      copy:
+        src: files/pi-ssh-config.conf
+        dest: ~pi/.ssh/config
+        owner: pi
+        group: pi
+        mode: 0600
+      tags: config
+
+    - name: Fix rc.local shebang
+      replace:
+        path: /etc/rc.local
+        regexp: '^#!/bin/sh.*'
+        replace: '#!/bin/bash'
+      tags: config
+
+    - name: Add pi to groups
+      user:
+        name: pi
+        groups: systemd-journal
+        append: yes
+
+
+    - name: Copy ssh-proxy
+      copy:
+        src: create-proxy.sh
+        dest: /opt/create-proxy.sh
+        mode: 0755
+        owner: pi
+      tags: proxy
+    
+    - name: Autorun of proxy
+      lineinfile:
+        path: /etc/rc.local
+        line: '/opt/create-proxy.sh &'
+        insertbefore: 'exit 0'
+        state: present
+      tags: proxy
