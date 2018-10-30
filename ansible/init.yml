@@ -49,9 +49,9 @@
         - gcc-4.6-base
         - gcc-4.7-base
         - gcc-4.8-base
-        - gcc-4.9-base
+        #- gcc-4.9-base
         - gcc-5-base
-        - gcc-6-base
+        #- gcc-6-base
         - triggerhappy
         - dphys-swapfile
         - dc
@@ -60,7 +60,9 @@
         - python-minecraftpi
         - python3-minecraftpi
         - minecraft-pi
-        - bluez
+
+    - timezone:
+        name: "Europe/Moscow"
 
     - name: Install basic packages
       apt:
@@ -94,12 +96,60 @@
         - python3-yaml
         - python3-pytest
         - gifsicle
+        - python3-simplejson
 
     - name: Remove bad aliases
       lineinfile:
         path: ~pi/.bashrc
         regexp: 'alias ls='
         state: absent
+
+    - name: create dir
+      file:
+        path: /var/log/greenlight/
+        state: directory
+        owner: pi
+        group: pi
+
+
+    - name: Copy dummy-server app
+      copy:
+        src: dummy-server.py
+        dest: /opt/dummy-server.py
+        owner: pi
+        group: pi
+        mode: 0755
+      notify: restart-app
+
+    - name: Create systemd-script
+      copy:
+        dest: /etc/systemd/system/rsp-greenlight.service
+        content: |
+          [Unit]
+          Description=Raspberry GreenLight server service
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=pi
+          Group=pi
+          WorkingDirectory=/opt
+          Restart=always
+          ExecStart=/opt/dummy-server.py 5000
+          RestartSec=30
+          StandardError=syslog+console
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: restart-app
+
+    - name: enable app-service
+      systemd:
+        name: rsp-greenlight
+        enabled: true
+        daemon_reload: yes
+        state: started
+
 
     - name: Copy ssh config
       copy:
@@ -132,10 +182,17 @@
         owner: pi
       tags: proxy
     
-    - name: Autorun of proxy
+    - name: Autorun for create-proxy.sh
       lineinfile:
         path: /etc/rc.local
         line: '/opt/create-proxy.sh &'
         insertbefore: 'exit 0'
         state: present
       tags: proxy
+
+
+  handlers:
+    - name: restart-app
+      systemd:
+        name: rsp-greenlight
+        state: restarted
