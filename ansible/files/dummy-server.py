@@ -22,8 +22,6 @@ from sys import argv
 #import SocketServer
 #import simplejson
 
-def send_to_led(post_data):
-    pass
 
 class S(BaseHTTPRequestHandler):
     buffer = 1
@@ -33,6 +31,7 @@ class S(BaseHTTPRequestHandler):
     def _set_headers(self, code=200):
         self.send_response(code)
         self.send_header('Content-type', 'text/html')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
 
     def log_message(self, formatt, *args):
@@ -45,6 +44,13 @@ class S(BaseHTTPRequestHandler):
         print(log, end='')
         #print(formatt)
         #print(args)
+
+    def send_to_uart(self, post_data):
+        led_r, brightness_r = post_data.split('&')
+        led_index = led_r.split('=')[1]
+        brightness = brightness_r.split('=')[1]
+        self.log_message("POST data: led_index = %s, brightness = %s",
+                        led_index, brightness)
 
     def show_logs(self):
         self.wfile.write(b"Gotcha logs!\n")
@@ -87,13 +93,13 @@ class S(BaseHTTPRequestHandler):
             self._set_headers()
             l = "Gotcha: {}".format(post_data)
             self.wfile.write(l.encode('utf-8'))
-            send_to_led(post_data)
+            self.log_message("POST data(raw): %s", post_data)
+            self.send_to_uart(post_data)
         else:
             self._set_headers(404)
             self.wfile.write(b"POST only allowed for /greenlight")
             return
 
-        self.log_message("POST data: %s", post_data)
 
 def run(server_class=HTTPServer, handler_class=S, port=80):
     server_address = ('', port)
