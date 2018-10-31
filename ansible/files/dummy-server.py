@@ -21,7 +21,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from sys import argv
 #import SocketServer
 #import simplejson
+import serial
+import binascii
 
+serialport = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=3.0)
 
 class S(BaseHTTPRequestHandler):
     buffer = 1
@@ -47,10 +50,32 @@ class S(BaseHTTPRequestHandler):
 
     def send_to_uart(self, post_data):
         led_r, brightness_r = post_data.split('&')
-        led_index = led_r.split('=')[1]
-        brightness = brightness_r.split('=')[1]
+        led_index = int(led_r.split('=')[1])
+        brightness = int(brightness_r.split('=')[1])
         self.log_message("POST data: led_index = %s, brightness = %s",
                         led_index, brightness)
+
+        b = bytearray()
+        # add header
+        b.extend([0x56, 0x12, 0x54])
+        # set lightning number
+        b.extend([0x00, 0x00, led_index])
+        # command - set brightness
+        b.append(0x01)
+        # brightness value
+        b.append(brightness)
+        # lenght + crc32 (4bytes)
+        package_length = len(b) + 4
+        b.insert(0, package_length)
+        # insert crc32 sum
+        crc32_str_h = hex(binascii.crc32(b))
+        crc32_hex_b = int(crc32_str_h, 16).to_bytes(4, byteorder='big', signed=False)
+        b.extend(crc32_hex_b)
+
+        pretty_hex = "0x" + " 0x".join("{:02x}".format(x) for x in b)
+        self.log_message("UART: data: %s", pretty_hex)
+        k = serialport.write(b)
+        self.log_message("UART: sended %s bytes!", k)
 
     def show_logs(self):
         self.wfile.write(b"Gotcha logs!\n")
