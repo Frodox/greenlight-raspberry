@@ -23,8 +23,21 @@ from sys import argv
 #import simplejson
 import serial
 import binascii
+import threading
+import time
 
-serialport = serial.Serial("/dev/ttyAMA0", baudrate=9600, timeout=3.0)
+SERIALPORT = serial.Serial(
+    "/dev/ttyAMA0",
+    baudrate=9600,
+    parity=serial.PARITY_EVEN,
+    stopbits=serial.STOPBITS_TWO,
+    bytesize=serial.EIGHTBITS,
+    timeout=3.0,
+)
+SEND_THREAD = None
+LED_INDEX = None
+LED_BRIGHTNESS = None
+
 
 class S(BaseHTTPRequestHandler):
     buffer = 1
@@ -48,34 +61,59 @@ class S(BaseHTTPRequestHandler):
         #print(formatt)
         #print(args)
 
+    def send_to_serial(self):
+        global LED_INDEX
+        global LED_BRIGHTNESS
+        global SERIALPORT
+
+        if LED_INDEX is None or LED_BRIGHTNESS is None:
+            self.log_message("LED_INDEX or LED_BRIGHTNESS is None")
+            raise Exception("LED_INDEX or LED_BRIGHTNESS is None")
+
+        # TODO: need to sync/Lock with main thread where we change data
+        while True:
+            if LED_INDEX > 256 or LED_BRIGHTNESS > 256:
+                self.log_message("LED_INDEX > 256 or LED_BRIGHTNESS > 256")
+                raise Exception("LED_INDEX > 256 or LED_BRIGHTNESS > 256")
+
+            b = bytearray()
+            # add header
+            b.extend([0x56, 0x12, 0x54])
+            # set lightning number
+            b.extend([0x00, 0x00, LED_INDEX])
+            # command - set brightness
+            b.append(0x01)
+            # brightness value
+            b.append(LED_BRIGHTNESS)
+            # lenght + crc32 (4bytes)
+            package_length = len(b) + 4
+            b.insert(0, package_length)
+            # insert crc32 sum
+            crc32_str_h = hex(binascii.crc32(b))
+            crc32_hex_b = int(crc32_str_h, 16).to_bytes(4, byteorder='big', signed=False)
+            b.extend(crc32_hex_b)
+
+            pretty_hex = "0x" + " 0x".join("{:02x}".format(x) for x in b)
+
+            self.log_message("UART: data: %s", pretty_hex)
+            k = SERIALPORT.write(b)
+            self.log_message("UART: sended %s bytes!", k)
+            time.sleep(5)
+
     def send_to_uart(self, post_data):
+        global LED_INDEX
+        global LED_BRIGHTNESS
+        global SEND_THREAD
+
         led_r, brightness_r = post_data.split('&')
-        led_index = int(led_r.split('=')[1])
-        brightness = int(brightness_r.split('=')[1])
+        LED_INDEX = abs(int(led_r.split('=')[1]))
+        LED_BRIGHTNESS = abs(int(brightness_r.split('=')[1]))
         self.log_message("POST data: led_index = %s, brightness = %s",
-                        led_index, brightness)
+                        LED_INDEX, LED_BRIGHTNESS)
 
-        b = bytearray()
-        # add header
-        b.extend([0x56, 0x12, 0x54])
-        # set lightning number
-        b.extend([0x00, 0x00, led_index])
-        # command - set brightness
-        b.append(0x01)
-        # brightness value
-        b.append(brightness)
-        # lenght + crc32 (4bytes)
-        package_length = len(b) + 4
-        b.insert(0, package_length)
-        # insert crc32 sum
-        crc32_str_h = hex(binascii.crc32(b))
-        crc32_hex_b = int(crc32_str_h, 16).to_bytes(4, byteorder='big', signed=False)
-        b.extend(crc32_hex_b)
-
-        pretty_hex = "0x" + " 0x".join("{:02x}".format(x) for x in b)
-        self.log_message("UART: data: %s", pretty_hex)
-        k = serialport.write(b)
-        self.log_message("UART: sended %s bytes!", k)
+        if SEND_THREAD is None or not SEND_THREAD.is_alive():
+            SEND_THREAD = threading.Thread(target=self.send_to_serial)
+            SEND_THREAD.start()
 
     def show_logs(self):
         self.wfile.write(b"Gotcha logs!\n")
@@ -118,6 +156,7 @@ class S(BaseHTTPRequestHandler):
             self._set_headers()
             l = "Gotcha: {}".format(post_data)
             self.wfile.write(l.encode('utf-8'))
+            self.log_message("- - - - - - - - - - - - - - -")
             self.log_message("POST data(raw): %s", post_data)
             self.send_to_uart(post_data)
         else:
