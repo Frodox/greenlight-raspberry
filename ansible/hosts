@@ -1,5 +1,6 @@
 [raspberry]
-rsp-greenlight ansible_host=192.168.1.65
+rsp-greenlight-local ansible_host=192.168.1.76
+rsp-greenligh
 
 [test]
 rpi-lexx-lan

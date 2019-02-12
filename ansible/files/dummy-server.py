@@ -25,12 +25,16 @@ import serial
 import binascii
 import threading
 import time
+import socket
+
+HOSTNAME = socket.gethostname()
+port = 5000
 
 SERIALPORT = serial.Serial(
     "/dev/ttyAMA0",
     baudrate=9600,
-    parity=serial.PARITY_EVEN,
-    stopbits=serial.STOPBITS_TWO,
+    parity=serial.PARITY_NONE,
+    stopbits=serial.STOPBITS_ONE,
     bytesize=serial.EIGHTBITS,
     timeout=3.0,
 )
@@ -137,8 +141,13 @@ class S(BaseHTTPRequestHandler):
             self._set_headers()
             self.show_logs()
         else:
-            self._set_headers(404)
-            self.wfile.write(b"Ok. But nothing interesting here")
+            self._set_headers(200)
+
+            self.wfile.write(b"<code>I'm alive! See /logs<br>\n")
+            status = "Hostname: {}<br>\n".format(HOSTNAME) \
+                   + "Actual app port: {}<br>\n</code>".format(port)
+
+            self.wfile.write(bytes(status, "utf8"))
 
     def do_HEAD(self):
         self._set_headers()
@@ -165,15 +174,12 @@ class S(BaseHTTPRequestHandler):
             return
 
 
-def run(server_class=HTTPServer, handler_class=S, port=80):
+def run(server_class=HTTPServer, handler_class=S):
+    global port
     server_address = ('', port)
     httpd = server_class(server_address, handler_class)
     print('Starting httpd at {}...'.format(port))
     httpd.serve_forever()
 
 if __name__ == "__main__":
-
-    if len(argv) == 2:
-        run(port=int(argv[1]))
-    else:
-        run()
+    run()

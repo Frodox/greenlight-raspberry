@@ -73,6 +73,7 @@
         update_cache: yes
       with_items:
         - tmux
+        - screen
         - htop
         - bash-completion
         - vim
@@ -98,7 +99,14 @@
         - gifsicle
         - python3-simplejson
         - python3-serial
+        - python-serial
         - minicom
+        - nmap
+        - wvdial
+        - ppp
+        - dnsutils
+        - statserial
+        - telnet
 
     - name: Remove bad aliases
       lineinfile:
@@ -106,52 +114,95 @@
         regexp: 'alias ls='
         state: absent
 
-    - name: create dir
+    - name: setup Vimrc config
+      copy:
+        dest: /etc/vim/vimrc.local
+        content: |
+          let g:skip_defaults_vim = 1
+
+          set mouse=
+          set number
+          syntax on
+          colo ron
+          set hls
+          set expandtab
+          set tabstop=4
+
+    - name: setup sysctl
+      copy:
+        dest: /etc/sysctl.d/95-rpi-frodox.conf
+        content: |
+          net.ipv6.conf.all.disable_ipv6 = 1
+          net.ipv6.conf.default.disable_ipv6 = 1
+          net.ipv6.conf.lo.disable_ipv6 = 1
+          net.ipv6.conf.eth0.disable_ipv6 = 1
+
+  # /boot/cmdline.txt - ipv6.disable=1
+
+    - name: create dir for apps-logs
       file:
         path: /var/log/greenlight/
         state: directory
         owner: pi
         group: pi
 
+  # ipv6 - /etc/modprobe.d/ipv6.conf
+  # 
 
-    - name: Copy dummy-server app
+    - name: Copy app
       copy:
-        src: dummy-server.py
-        dest: /opt/dummy-server.py
+        src: "{{ item }}"
+        dest: "/opt/{{ item }}"
         owner: pi
         group: pi
         mode: 0755
+      with_items:
+        - dummy-server.py
+        - rs485-exporter.py
+        - rs485_module.py
       notify: restart-app
       tags: deploy
 
     - name: Create systemd-script
       copy:
-        dest: /etc/systemd/system/rsp-greenlight.service
+        dest: /etc/systemd/system/rsp-{{ item }}.service
         content: |
           [Unit]
-          Description=Raspberry GreenLight server service
+          Description=Raspberry GreenLight '{{ item }}' service
           After=network.target
 
           [Service]
-          Type=simple
           User=pi
           Group=pi
           WorkingDirectory=/opt
           Restart=always
-          ExecStart=/opt/dummy-server.py 5000
+          ExecStart=/opt/{{ item }}.py
           RestartSec=30
-          StandardError=syslog+console
+          #StandardOutput=syslog 
+          #StandardError=syslog+console 
 
           [Install]
           WantedBy=multi-user.target
+      with_items:
+        - dummy-server
+        - rs485-exporter
+      tags: deploy
       notify: restart-app
 
-    - name: enable app-service
+
+# pip3 install prometheus_client
+
+
+    - name: enable app-services
       systemd:
-        name: rsp-greenlight
+        name: "rsp-{{ item }}.service"
         enabled: true
         daemon_reload: yes
         state: started
+      tags: deploy
+      with_items:
+        - dummy-server
+        - rs485-exporter
 
 
     - name: Copy ssh config
@@ -184,7 +235,7 @@
         mode: 0755
         owner: pi
       tags: proxy
-    
+
     - name: Autorun for create-proxy.sh
       lineinfile:
         path: /etc/rc.local
@@ -194,8 +245,12 @@
       tags: proxy
 
 
+# --- #
   handlers:
     - name: restart-app
       systemd:
-        name: rsp-greenlight
+        name: "rsp-{{ item }}.service"
         state: restarted
+      with_items:
+        - dummy-server
+        - rs485-exporter
