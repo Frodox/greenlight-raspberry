@@ -107,6 +107,8 @@
         - dnsutils
         - statserial
         - telnet
+        - p7zip-full
+        - pciutils
 
     - name: Remove bad aliases
       lineinfile:
